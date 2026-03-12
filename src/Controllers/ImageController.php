@@ -19,38 +19,56 @@ final class ImageController
 
     public function serve(string $productId, int $index): void
     {
-        $product = $this->productService->getById($productId, true);
-        if ($product === null) {
-            $this->redirectToPlaceholder();
-            return;
-        }
-        $images = $product['images'] ?? [];
-        if (!isset($images[$index]) || $images[$index] === '') {
-            $this->redirectToPlaceholder();
-            return;
-        }
-        $filename = $images[$index];
-        if (is_array($filename)) {
-            $filename = (string) ($filename['name'] ?? $filename[0] ?? '');
-        }
-        $filename = basename((string) $filename);
-        $imageData = $product['imageData'] ?? [];
-        if (isset($imageData[$filename]) && $imageData[$filename] !== '') {
-            $raw = @base64_decode($imageData[$filename], true);
-            if ($raw !== false) {
-                $this->outputImage($raw, $filename);
+        try {
+            if ($productId === '' || strlen($productId) !== 24 || !ctype_xdigit($productId)) {
+                $this->servePlaceholder();
                 return;
             }
-        }
-        $path = defined('PROJECT_ROOT') ? (PROJECT_ROOT . '/public/uploads/' . $filename) : '';
-        if ($path !== '' && @is_file($path)) {
-            $raw = @file_get_contents($path);
-            if ($raw !== false) {
-                $this->outputImage($raw, $filename);
+            $product = $this->productService->getById($productId, true);
+            if ($product === null) {
+                $this->servePlaceholder();
                 return;
             }
+            $images = $product['images'] ?? [];
+            if ($images instanceof \Traversable) {
+                $images = iterator_to_array($images);
+            }
+            if (!isset($images[$index]) || $images[$index] === '') {
+                $this->servePlaceholder();
+                return;
+            }
+            $filename = $images[$index];
+            if (is_array($filename)) {
+                $filename = (string) ($filename['name'] ?? $filename[0] ?? '');
+            }
+            $filename = basename((string) $filename);
+            if ($filename === '' || $filename === '.') {
+                $this->servePlaceholder();
+                return;
+            }
+            $imageData = $product['imageData'] ?? [];
+            if ($imageData instanceof \Traversable) {
+                $imageData = iterator_to_array($imageData);
+            }
+            if (isset($imageData[$filename]) && $imageData[$filename] !== '') {
+                $raw = @base64_decode((string) $imageData[$filename], true);
+                if ($raw !== false && $raw !== '') {
+                    $this->outputImage($raw, $filename);
+                    return;
+                }
+            }
+            $path = defined('PROJECT_ROOT') ? (PROJECT_ROOT . '/public/uploads/' . $filename) : '';
+            if ($path !== '' && @is_file($path)) {
+                $raw = @file_get_contents($path);
+                if ($raw !== false) {
+                    $this->outputImage($raw, $filename);
+                    return;
+                }
+            }
+        } catch (\Throwable $e) {
+            \ToyShop\Infrastructure\Logger::error('Image serve error', ['message' => $e->getMessage(), 'productId' => $productId]);
         }
-        $this->redirectToPlaceholder();
+        $this->servePlaceholder();
     }
 
     private function outputImage(string $raw, string $filename): void
@@ -68,10 +86,18 @@ final class ImageController
         echo $raw;
     }
 
-    private function redirectToPlaceholder(): void
+    /** Placeholder'ı redirect yerine doğrudan sunar (img etiketleri için daha güvenilir). */
+    private function servePlaceholder(): void
     {
-        $base = rtrim(parse_url(Env::get('APP_URL', ''), PHP_URL_PATH) ?: '', '/') ?: '';
-        header('Location: ' . $base . '/assets/placeholder.svg', true, 302);
-        exit;
+        $path = defined('PROJECT_ROOT') ? (PROJECT_ROOT . '/public/assets/placeholder.svg') : '';
+        if ($path !== '' && @is_file($path)) {
+            header('Content-Type: image/svg+xml');
+            header('Cache-Control: public, max-age=3600');
+            echo @file_get_contents($path);
+            return;
+        }
+        header('Content-Type: image/svg+xml');
+        header('Cache-Control: no-cache');
+        echo '<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect fill="#eee" width="200" height="200"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#999" font-size="14">Görsel</text></svg>';
     }
 }

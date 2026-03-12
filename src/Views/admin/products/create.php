@@ -62,7 +62,7 @@ document.getElementById('productForm').addEventListener('submit', function(e){
     e.preventDefault();
     var fd = new FormData(this);
     fd.append('isActive', document.getElementById('isActive').checked ? '1' : '0');
-    fetch('<?= $adminBase ?>/products/create', { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+    fetch('<?= $adminBase ?>/products/create', { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
         .then(function(r){ return r.json(); })
         .then(function(d){
             if (d.ok && d.data.redirect) window.location.href = d.data.redirect;

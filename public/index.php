@@ -32,6 +32,11 @@ $requestUri = $_SERVER['REQUEST_URI'] ?? '/';
 $path = parse_url($requestUri, PHP_URL_PATH);
 $path = $path ?: '/';
 $path = rtrim($path, '/') ?: '/';
+// Alt dizinden deploy edildiyse (örn. APP_URL path içeriyorsa) route path'ı buna göre ayarla
+$basePathFromUrl = parse_url(Env::get('APP_URL', ''), PHP_URL_PATH);
+if ($basePathFromUrl !== null && $basePathFromUrl !== '' && $basePathFromUrl !== '/' && str_starts_with($path, $basePathFromUrl)) {
+    $path = substr($path, strlen($basePathFromUrl)) ?: '/';
+}
 
 if ($path === '/healthz') {
     $status = 200;
