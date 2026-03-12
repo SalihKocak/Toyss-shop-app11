@@ -37,15 +37,21 @@ final class ImageController
                 $this->servePlaceholder();
                 return;
             }
-            $filename = $images[$index];
-            if (is_array($filename)) {
-                $filename = (string) ($filename['name'] ?? $filename[0] ?? '');
+            $storedPath = $images[$index];
+            if (is_array($storedPath)) {
+                $storedPath = (string) ($storedPath['name'] ?? $storedPath[0] ?? '');
             }
-            $filename = basename((string) $filename);
+            $storedPath = trim((string) $storedPath);
+            if ($storedPath === '') {
+                $this->servePlaceholder();
+                return;
+            }
+            $filename = basename($storedPath);
             if ($filename === '' || $filename === '.') {
                 $this->servePlaceholder();
                 return;
             }
+            // 1) Veritabanındaki imageData (yeni yüklemeler; key = dosya adı)
             $imageData = $product['imageData'] ?? [];
             if ($imageData instanceof \Traversable) {
                 $imageData = iterator_to_array($imageData);
@@ -57,12 +63,30 @@ final class ImageController
                     return;
                 }
             }
-            $path = defined('PROJECT_ROOT') ? (PROJECT_ROOT . '/public/uploads/' . $filename) : '';
-            if ($path !== '' && @is_file($path)) {
-                $raw = @file_get_contents($path);
-                if ($raw !== false) {
-                    $this->outputImage($raw, $filename);
-                    return;
+            // 2) Dosyadan: önce tam yol (seed: AaGörseller/xxx.jpg), sonra sadece dosya adı
+            if (!defined('PROJECT_ROOT')) {
+                $this->servePlaceholder();
+                return;
+            }
+            $uploadsRoot = PROJECT_ROOT . '/public/uploads';
+            $safeRelative = str_replace('\\', '/', $storedPath);
+            if (preg_match('#\.\.#', $safeRelative)) {
+                $safeRelative = $filename;
+            }
+            $legacyRoot = PROJECT_ROOT . '/src/public/uploads';
+            $candidates = [
+                $uploadsRoot . '/' . $safeRelative,
+                $uploadsRoot . '/' . $filename,
+                $legacyRoot . '/' . $safeRelative,
+                $legacyRoot . '/' . $filename,
+            ];
+            foreach ($candidates as $path) {
+                if (@is_file($path)) {
+                    $raw = @file_get_contents($path);
+                    if ($raw !== false) {
+                        $this->outputImage($raw, $filename);
+                        return;
+                    }
                 }
             }
         } catch (\Throwable $e) {
@@ -98,6 +122,6 @@ final class ImageController
         }
         header('Content-Type: image/svg+xml');
         header('Cache-Control: no-cache');
-        echo '<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect fill="#eee" width="200" height="200"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#999" font-size="14">Görsel</text></svg>';
+        echo '<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect fill="#eee" width="200" height="200"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#999" font-size="14">Görsel yok</text></svg>';
     }
 }

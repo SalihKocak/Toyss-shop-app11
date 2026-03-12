@@ -81,8 +81,9 @@ echo "  " . count($demoUserIds) . " demo users ready.\n";
 echo "Seeding products...\n";
 
 /**
- * public/uploads/AaGörseller altindaki resimleri urun adina gore otomatik eslestirir.
- * Varsayim: dosya adlari urun adlariyla ayni/benzer.
+ * Ürün görselleri: public/uploads/AaGörseller veya public/uploads/product-images içine koyun.
+ * Dosya adları ürün adına göre eşleşir (örn. lego-technic-yaris-arabasi.jpg).
+ * Seed çalışırken bulunan görseller veritabanına (imageData) gömülür; local ve deploy'da görünür.
  */
 function toyshop_normalize(string $s): string
 {
@@ -213,10 +214,37 @@ if ($imageCandidates !== []) {
 $baseMs = (int) (microtime(true) * 1000);
 $productIds = [];
 $productsColl = $db->selectCollection('products');
+$projectRoot = dirname(__DIR__);
 foreach ($products as $i => $p) {
     $ts = new \MongoDB\BSON\UTCDateTime($baseMs + $i);
     $p['createdAt'] = $ts;
     $p['updatedAt'] = $ts;
+    // Mevcut görsel dosyalarını veritabanına (imageData) göm; böylece local ve deploy'da görünür
+    $imageData = [];
+    foreach ($p['images'] ?? [] as $relPath) {
+        $relPath = str_replace('\\', '/', trim((string) $relPath));
+        if ($relPath === '' || preg_match('#\.\.#', $relPath)) {
+            continue;
+        }
+        $candidates = [
+            $projectRoot . '/public/uploads/' . $relPath,
+            $projectRoot . '/public/uploads/' . basename($relPath),
+            $projectRoot . '/src/public/uploads/' . $relPath,
+            $projectRoot . '/src/public/uploads/' . basename($relPath),
+        ];
+        foreach ($candidates as $path) {
+            if (is_file($path)) {
+                $raw = @file_get_contents($path);
+                if ($raw !== false) {
+                    $imageData[basename($relPath)] = base64_encode($raw);
+                    break;
+                }
+            }
+        }
+    }
+    if ($imageData !== []) {
+        $p['imageData'] = $imageData;
+    }
     $res = $productsColl->insertOne($p);
     $productIds[] = ['id' => $res->getInsertedId(), 'name' => $p['name'], 'price' => (float)($p['price'] ?? 0)];
 }
